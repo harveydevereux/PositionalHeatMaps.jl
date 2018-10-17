@@ -2,12 +2,15 @@ module PositionalHeatMaps
 using ProgressMeter
 using Plots
 using PyCall
+using Statistics
 @pyimport scipy.interpolate as si
 # TODO abstract to a box type? Is this needed?
 # TODO N-dimensional?
 export
-Grid2D,InBox,PointsInBox,PlotBoxes,AssignBoxValues,HeatMap
+Grid2D,InBox,PointsInBox,PlotBoxes,AssignBoxValues,HeatMap,BoxCentres,
+AssignBoxVectors,Scaling,HeatMapLimits
 
+# same as python's meshgrid
 meshgrid(x,y) = (repeat(x',length(y),1),repeat(y,1,length(x)))
 
 function Grid2D(points; n_boxes=100, bounds = zeros(4))
@@ -111,6 +114,74 @@ function AssignBoxValues(points,boxes,values)
     return mean_box_values
 end
 
+function AssignBoxVectors(points,boxes,vectors)
+    """
+        Takes a set of point, boxes, and associated vectors. Then for
+        each box finds the points in it and assigns the mean of the
+        associated vectors (i.e a vector of the mean of each dimension).
+
+        points  Nx2
+        boxes   Bx4
+        values  NxD
+    """
+    mean_box_vectors = zeros(size(boxes,1),size(vectors,2))
+    @showprogress for i in 1:size(boxes,1)
+        ind = PointsInBox(boxes[i,:,:],points[:,1:2])
+        # ignore for no points in this box
+        if isempty(points[ind,:])
+            continue
+        else
+            mean_box_vectors[i,:] = mean(vectors[ind,:],dims=1)
+        end
+    end
+    return mean_box_vectors
+end
+
+function BoxCentres(Boxes)
+    """
+        Returns the centre of each 2D box
+    """
+    C = zeros(size(Boxes,1),2)
+    for i in 1:size(Boxes,1)
+        C[i,:] = [abs(Boxes[i,1,1]-Boxes[i,1,2]), abs(Boxes[i,2,1]-Boxes[i,2,2])]
+        C[i,:] = C[i,:]./2 .+ [Boxes[i,1,1],Boxes[i,2,1]]
+    end
+    return C
+end
+
+# scaling is useful to plot over the heatmaps with quiver plots for example.
+function Scaling(coords,lim)
+    """
+        Min max scaling to the VoronoiDelaunay range requirement
+    """
+    Rescale = zeros(size(coords))
+    for d in 1:2
+        min = minimum(coords[:,d])
+        max = maximum(coords[:,d])
+        a = minimum(lim[d,:])
+        b = maximum(lim[d,:])
+        Rescale[:,d] = [ ((coords[i,d] - min)/(max-min))*(b-a)+a for i in 1:size(coords,1)]
+    end
+    return Rescale
+end
+
+function HeatMapLimits(Map)
+    lims = zeros(2)
+    for i in 1:size(Map,1)
+        if isnan(Map[i,1])
+            lims[1] = i
+            break
+        end
+    end
+    for j in 1:size(Map,2)
+        if isnan(Map[1,j])
+            lims[2] = j
+            break
+        end
+    end
+    return lims
+end
+
 function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpolation="None",step=2)
     """
         Wraps around the whole module to produce a heatmap which
@@ -143,7 +214,7 @@ function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpola
         xi,yi = meshgrid(xi,yi)
         G = si.griddata(points,mean_box_values,(xi,yi),method="linear")
         display(heatmap(G))
-        return G
+        return G,boxes
     end
     if (interpolation == "cubic")
         xi = collect(bounds[1]:step:bounds[2])
@@ -151,7 +222,7 @@ function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpola
         xi,yi = meshgrid(xi,yi)
         G = si.griddata(points,mean_box_values,(xi,yi),method="cubic")
         display(heatmap(G))
-        return G
+        return G,boxes
     end
     if (interpolation == "nearest")
         xi = collect(bounds[1]:step:bounds[2])
@@ -159,11 +230,11 @@ function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpola
         xi,yi = meshgrid(xi,yi)
         G = si.griddata(points,mean_box_values,(xi,yi),method="nearest")
         display(heatmap(G))
-        return G
+        return G,boxes
     end
 
     display(heatmap(map))
-    return map
+    return map,boxes
 end
 
 rectangle(w, h, x, y) = Shape(x .+ [0,w,w,0], y .+ [0,0,h,h])

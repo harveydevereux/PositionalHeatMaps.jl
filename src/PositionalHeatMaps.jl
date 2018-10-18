@@ -8,7 +8,7 @@ using Statistics
 # TODO N-dimensional?
 export
 Grid2D,InBox,PointsInBox,PlotBoxes,AssignBoxValues,HeatMap,BoxCentres,
-AssignBoxVectors,Scaling,HeatMapLimits
+AssignBoxVectors,Scaling,HeatMapLimits,HeatMapQuiver,PlotFocus,Ellipse
 
 # same as python's meshgrid
 meshgrid(x,y) = (repeat(x',length(y),1),repeat(y,1,length(x)))
@@ -114,6 +114,27 @@ function AssignBoxValues(points,boxes,values)
     return mean_box_values
 end
 
+function AssignBoxCounts(points,boxes)
+    """
+        Takes a set of point, boxes. Assigns each box the
+        number of points in it.
+
+        points  Nx2
+        boxes   Bx4
+    """
+    mean_box_values = zeros(size(boxes,1))
+    @showprogress for i in 1:size(boxes,1)
+        ind = PointsInBox(boxes[i,:,:],points[:,1:2])
+        # ignore for no points in this box
+        if isempty(points[ind,:])
+            continue
+        else
+            mean_box_values[i] = length(points[ind,:])
+        end
+    end
+    return mean_box_values
+end
+
 function AssignBoxVectors(points,boxes,vectors)
     """
         Takes a set of point, boxes, and associated vectors. Then for
@@ -182,7 +203,7 @@ function HeatMapLimits(Map)
     return lims
 end
 
-function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpolation="None",step=2)
+function HeatMap(points,n_boxes,values=ones(size(points,1)); bounds=[-1000,1000,-1000,1000],interpolation="None",step=2,counts=false)
     """
         Wraps around the whole module to produce a heatmap which
         is displayed and returned as a matrix.
@@ -194,9 +215,16 @@ function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpola
         interpolation   whether to interpolate with python's scipy.interpolate.griddata
                         can do linear,cubic, or nearest (see the scipy page)
         step            the interpolation step
+        counts          if counts is true only the number of points in each
+                        box is assigned (position density)
     """
     boxes,x,y = Grid2D(points,n_boxes=n_boxes,bounds=bounds)
-    mean_box_values = AssignBoxValues(points,boxes,values)
+
+    if (counts)
+        mean_box_values = AssignBoxCounts(points,boxes)
+    else
+        mean_box_values = AssignBoxValues(points,boxes,values)
+    end
 
     map = zeros(n_boxes,n_boxes)
     points = zeros(size(mean_box_values,1),2)
@@ -235,6 +263,45 @@ function HeatMap(points,n_boxes,values; bounds=[-1000,1000,-1000,1000],interpola
 
     display(heatmap(map))
     return map,boxes
+end
+
+function HeatMapQuiver(HeatMap,points,quiver_boxes,vectors=ones(size(points,1),2);color="white",bounds=[-1000,1000,-1000,1000])
+    """
+        Adds a quiver plot of the passed vectors
+
+        It is often usefull to compute a vector field resultant
+        from a smaller number of boxes
+
+        HeatMap         A previously computed heatmap
+        points          data points
+        quiver_boxes    the number of boxes to compute the quiver on
+        vectors         the vectors to quiver plot
+        color           vector colours
+        bounds          the quiver bounds
+    """
+    boxes,x,y = Grid2D(points,n_boxes=quiver_boxes,bounds=bounds)
+    lims = HeatMapLimits(HeatMap)
+    V = AssignBoxVectors(points,boxes,vectors)
+    C = BoxCentres(boxes)
+    C = Scaling(C,[0 lims[1];0 lims[2]])
+    indx = V[:,1] .> 0
+    indy = V[:,2] .> 0
+    v = V[indx.+indy .> 0,:]
+    c = C[indx.+indy .> 0,:]
+    heatmap(M)
+    quiver!(C[:,1],C[:,2], quiver=(V[:,1],V[:,2]), color=color)
+    display(plot!(xlims=(0,lims[1]),ylims=(0,lims[2])))
+end
+
+function Ellipse(n,a=1,b=1,max=2π)
+    x = [a*cos(t) for t in 0:(2π/n):2π]
+    y = [b*sin(t) for t in 0:(2π/n):2π]
+    return cat(x,y,dims=2)
+end
+
+function PlotFocus(HeatMap,shape,color="black")
+    lims = HeatMapLimits(HeatMap)
+    scatter!([lims[1]/2],[lims[2]/2],markersize=1.0,c=color,shape=shape,label="")
 end
 
 rectangle(w, h, x, y) = Shape(x .+ [0,w,w,0], y .+ [0,0,h,h])

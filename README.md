@@ -9,4 +9,9 @@ I.e. each point from the center represent the relative position of the nearest n
 of a focus beetle in the centre, at each point the colour is the focus beetles speed when the nearest neighbour is in that
 position. This is averaged over a 3 minute video of 200 beetles by taking all pairs.
 
-![nearest neighbour position effect on speed](https://raw.githubusercontent.com/harveydevereux/PositionalHeatMaps.jl/master/resources/speed-velocity.png)
+![nearest neighbour position effect on speed](https://raw.githubusercontent.com/harveydevereux/PositionalHeatMaps.jl/master/resources/NN-focus-speed.png)
+
+This is a speed and velocity positional heat map, where the (unit) velocity is plotted as a quiver plot and the speed
+as the colour. The focus is also added as an ellipse.
+
+![Speed and velocity](https://raw.githubusercontent.com/harveydevereux/PositionalHeatMaps.jl/master/resources/speed-velocity.png)
